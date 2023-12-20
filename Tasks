@@ -1,0 +1,279 @@
+Deploy and nginx file
+------------------------------
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: nginx-service
+spec:
+  type: NodePort
+  selector:
+    app: nginx-app
+    type: front-end
+  ports:
+    - port: 80
+      targetPort: 80
+      nodePort: 30011
+
+
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nginx-deployment
+  labels:
+    app: nginx-app
+    type: front-end
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: nginx-app
+      type: front-end
+  template:
+    metadata:
+      labels:
+        app: nginx-app
+        type: front-end
+    spec:
+      containers:
+        - name: nginx-container
+          image: nginx:latest
+
+
+Config Map 
+-------------------------
+
+apiVersion: v1
+kind: ConfigMap
+metadata:
+ name: config-map
+data:
+volumes:
+- name: config-map-volume
+ configMap:
+   name: config-map
+containers:
+- name: nginx
+ volumeMounts:
+ - name: config-map-volume
+   mountPath: 
+   readOnly: true
+
+
+Wordpress
+-------------------------
+
+version: '3'
+
+services:
+  # Database
+  db:
+    image: mysql:5.7
+    volumes:
+      - db_data:/var/lib/mysql
+    restart: always
+    environment:
+      MYSQL_ROOT_PASSWORD: password
+      MYSQL_DATABASE: wordpress
+      MYSQL_USER: wordpress
+      MYSQL_PASSWORD: wordpress
+
+  # Wordpress
+   wordpress:
+    depends_on:
+      - db
+    image: wordpress:latest
+    ports:
+      - '8000:80'
+    restart: always
+    volumes: ['./:/var/www/html']
+    environment:
+      WORDPRESS_DB_HOST: db:3306
+      WORDPRESS_DB_USER: wordpress
+      WORDPRESS_DB_PASSWORD: wordpress
+
+   volumes:
+     db_data:
+
+
+Dockerize Node js
+-----------------------
+
+app.js file
+const express = require('express');
+const app = express();
+
+app.get('/', (req, res) => {
+  res.send('Hello, Dockerized Node.js App!');
+});
+
+app.listen(3000, () => {
+  console.log('App listening on port 3000');
+});
+
+dockerfile
+FROM node:14
+WORKDIR /usr/src/app
+COPY package*.json ./
+RUN npm install
+COPY . .
+EXPOSE 3000
+CMD ["node", "app.js"]
+
+package.json
+{
+  "name": "dockerized-node-app",
+  "version": "1.0.0",
+  "description": "A basic Node.js application for Docker",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js"
+  },
+  "dependencies": {
+    "express": "^4.17.1"
+  }
+}
+
+
+
+Python-flask 
+------------------------
+
+FROM python:3.7-slim
+WORKDIR /app
+COPY . /app
+RUN pip install --trusted-host pypi.python.org -r info.txt
+EXPOSE 5000
+ 
+ENV PORT 5000
+EXPOSE 5000
+ENTRYPOINT ["python"]
+CMD ["app.py"]
+
+info.txt
+click==8.0.3
+Flask==2.0.2
+itsdangerous==2.0.1
+Jinja2==3.0.2
+MarkupSafe==2.0.1
+Werkzeug==2.0.2
+
+
+EC2 Terrform
+-----------------------------------
+
+
+# Configure the AWS Provider
+provider "aws" {
+  region = "ap-south-1"
+}
+
+# Create a key pair for SSH access
+resource "aws_key_pair" "ssh_key" {
+  key_name   = ""
+  public_key = ""
+}
+
+# Create a security group that allows SSH access
+resource "aws_security_group" "ssh_sg" {
+  name        = "ssh_sg"
+  description = "Security group for SSH access"
+
+  # Allow incoming traffic on port 22 from any IP address
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  # Allow all outbound traffic
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# Create an EC2 instance and associate it with the key pair and security group
+resource "aws_instance" "ec2_instance" {
+  ami           = "" 
+  instance_type = ""
+  key_name      = aws_key_pair.ssh_key.key_name
+  vpc_security_group_ids = [aws_security_group.ssh_sg.id]
+
+  tags = {
+    Name = "ec2_instance"
+  }
+}
+
+
+
+AWS RDS
+-----------------
+
+# Define the provider as AWS
+provider "aws" {
+  region = "ap-south-1"
+}
+ 
+# Create a security group for the RDS instance
+resource "aws_security_group" "rds_sg" {
+  name = "rds_sg"
+ 
+  # Allow inbound traffic from any IP on port 3306 (MySQL)
+  ingress {
+    from_port = 3306
+    to_port = 3306
+    protocol = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+ 
+  # Allow outbound traffic to any IP on any port
+  egress {
+    from_port = 0
+    to_port = 0
+    protocol = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+ 
+# Create a subnet group for the RDS instance
+resource "aws_db_subnet_group" "rds_subnet_group" {
+  name = "rds_subnet_group"
+  subnet_ids = ["subnet-12345678", "subnet-87654321"] # Replace with your subnet IDs
+}
+ 
+# Create a parameter group for the RDS instance
+resource "aws_db_parameter_group" "rds_parameter_group" {
+  name = "rds_parameter_group"
+  family = "mysql5.7"
+ 
+  # Set some custom parameters for MySQL
+  parameter {
+    name = "character_set_server"
+    value = "utf8mb4"
+  }
+ 
+  parameter {
+    name = "collation_server"
+    value = "utf8mb4_unicode_ci"
+  }
+}
+ 
+# Create the RDS instance
+resource "aws_db_instance" "rds_instance" {
+  engine = "mysql"
+  identifier = "my-rds-instance"
+  allocated_storage = 20
+  engine_version = "5.7.34"
+  instance_class = "db.t2.micro"
+  username = "admin"
+  password = "password"
+  db_subnet_group_name = aws_db_subnet_group.rds_subnet_group.name
+  vpc_security_group_ids = [aws_security_group.rds_sg.id]
+  parameter_group_name = aws_db_parameter_group.rds_parameter_group.name
+  skip_final_snapshot = true
+  publicly_accessible = true
+}
